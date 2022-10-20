@@ -12,9 +12,6 @@ from matplotlib import pyplot as plt
 matplotlib.use("Agg")
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
 def to_device(data, device):
     if len(data) == 12:
         (
@@ -88,7 +85,7 @@ def log(
         )
 
 
-def get_mask_from_lengths(lengths, max_len=None):
+def get_mask_from_lengths(lengths, max_len=None, device="cpu"):
     batch_size = lengths.shape[0]
     if max_len is None:
         max_len = torch.max(lengths).item()

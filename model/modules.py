@@ -11,16 +11,14 @@ import torch.nn.functional as F
 
 from utils.tools import get_mask_from_lengths, pad
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 class VarianceAdaptor(nn.Module):
     """Variance Adaptor"""
 
-    def __init__(self, preprocess_config, model_config):
+    def __init__(self, preprocess_config, model_config, device):
         super(VarianceAdaptor, self).__init__()
         self.duration_predictor = VariancePredictor(model_config)
-        self.length_regulator = LengthRegulator()
+        self.length_regulator = LengthRegulator(device)
         self.pitch_predictor = VariancePredictor(model_config)
         self.energy_predictor = VariancePredictor(model_config)
 
@@ -76,6 +74,7 @@ class VarianceAdaptor(nn.Module):
         self.energy_embedding = nn.Embedding(
             n_bins, model_config["transformer"]["encoder_hidden"]
         )
+        self.device = device
 
     def get_pitch_embedding(self, x, target, mask, control):
         prediction = self.pitch_predictor(x, mask)
@@ -161,8 +160,9 @@ class VarianceAdaptor(nn.Module):
 class LengthRegulator(nn.Module):
     """Length Regulator"""
 
-    def __init__(self):
+    def __init__(self, device):
         super(LengthRegulator, self).__init__()
+        self.device = device
 
     def LR(self, x, duration, max_len):
         output = list()
@@ -177,7 +177,7 @@ class LengthRegulator(nn.Module):
         else:
             output = pad(output)
 
-        return output, torch.LongTensor(mel_len).to(device)
+        return output, torch.LongTensor(mel_len).to(self.device)
 
     def expand(self, batch, predicted):
         out = list()

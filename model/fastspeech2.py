@@ -13,12 +13,12 @@ from utils.tools import get_mask_from_lengths
 class FastSpeech2(nn.Module):
     """ FastSpeech2 """
 
-    def __init__(self, preprocess_config, model_config):
+    def __init__(self, preprocess_config, model_config, device):
         super(FastSpeech2, self).__init__()
         self.model_config = model_config
 
         self.encoder = Encoder(model_config)
-        self.variance_adaptor = VarianceAdaptor(preprocess_config, model_config)
+        self.variance_adaptor = VarianceAdaptor(preprocess_config, model_config, device)
         self.decoder = Decoder(model_config)
         self.mel_linear = nn.Linear(
             model_config["transformer"]["decoder_hidden"],
@@ -39,6 +39,7 @@ class FastSpeech2(nn.Module):
                 n_speaker,
                 model_config["transformer"]["encoder_hidden"],
             )
+        self.device = device
 
     def forward(
         self,
@@ -56,7 +57,7 @@ class FastSpeech2(nn.Module):
         e_control=1.0,
         d_control=1.0,
     ):
-        src_masks = get_mask_from_lengths(src_lens, max_src_len)
+        src_masks = get_mask_from_lengths(src_lens, max_src_len, self.device)
         mel_masks = (
             get_mask_from_lengths(mel_lens, max_mel_len)
             if mel_lens is not None

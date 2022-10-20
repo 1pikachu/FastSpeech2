@@ -13,8 +13,8 @@ from utils.model import get_model, get_vocoder
 from utils.tools import to_device, synth_samples
 from dataset import TextDataset
 from text import text_to_sequence
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+import time
+import os
 
 
 def read_lexicon(lex_path):
@@ -84,28 +84,34 @@ def preprocess_mandarin(text, preprocess_config):
     return np.array(sequence)
 
 
-def synthesize(model, step, configs, vocoder, batchs, control_values):
+def synthesize(args, model, step, configs, vocoder, batchs, control_values):
     preprocess_config, model_config, train_config = configs
     pitch_control, energy_control, duration_control = control_values
 
-    for batch in batchs:
-        batch = to_device(batch, device)
-        with torch.no_grad():
-            # Forward
-            output = model(
-                *(batch[2:]),
-                p_control=pitch_control,
-                e_control=energy_control,
-                d_control=duration_control
-            )
-            synth_samples(
-                batch,
-                output,
-                vocoder,
-                model_config,
-                preprocess_config,
-                train_config["path"]["result_path"],
-            )
+    total_time = 0.0
+    total_sample = 0
+
+    for i, batch in enumerate(batchs):
+        if i >= args.num_iter:
+            break
+        batch = to_device(batch, args.device)
+        # Forward
+        elapsed = time.time()
+        output = model(
+            *(batch[2:]),
+            p_control=pitch_control,
+            e_control=energy_control,
+            d_control=duration_control
+        )
+        elapsed = time.time() - elapsed
+        print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
+        if i >= args.num_warmup:
+            total_sample += args.batch_size
+            total_time += elapsed
+    latency = total_time / total_sample * 1000
+    throughput = total_sample / total_time
+    print("inference Latency: {} ms".format(latency))
+    print("inference Throughput: {} samples/s".format(throughput))
 
 
 if __name__ == "__main__":
@@ -168,7 +174,18 @@ if __name__ == "__main__":
         default=1.0,
         help="control the speed of the whole utterance, larger value for slower speaking rate",
     )
+    # OOB
+    parser.add_argument('--batch_size', default=1, type=int, help='batch size')
+    parser.add_argument('--precision', default="float32", type=str, help='precision')
+    parser.add_argument('--channels_last', default=1, type=int, help='Use NHWC or not')
+    parser.add_argument('--jit', action='store_true', default=False, help='enable JIT')
+    parser.add_argument('--profile', action='store_true', default=False, help='collect timeline')
+    parser.add_argument('--num_iter', default=200, type=int, help='test iterations')
+    parser.add_argument('--num_warmup', default=20, type=int, help='test warmup')
+    parser.add_argument('--device', default='cpu', type=str, help='cpu, cuda or xpu')
+    parser.add_argument('--nv_fuser', action='store_true', default=False, help='enable nv fuser')
     args = parser.parse_args()
+    print(args)
 
     # Check source texts
     if args.mode == "batch":
@@ -185,10 +202,10 @@ if __name__ == "__main__":
     configs = (preprocess_config, model_config, train_config)
 
     # Get model
-    model = get_model(args, configs, device, train=False)
+    model = get_model(args, configs, args.device, train=False)
 
     # Load vocoder
-    vocoder = get_vocoder(model_config, device)
+    vocoder = get_vocoder(model_config, args.device)
 
     # Preprocess texts
     if args.mode == "batch":
@@ -196,7 +213,7 @@ if __name__ == "__main__":
         dataset = TextDataset(args.source, preprocess_config)
         batchs = DataLoader(
             dataset,
-            batch_size=8,
+            batch_size=args.batch_size,
             collate_fn=dataset.collate_fn,
         )
     if args.mode == "single":
@@ -211,4 +228,4 @@ if __name__ == "__main__":
 
     control_values = args.pitch_control, args.energy_control, args.duration_control
 
-    synthesize(model, args.restore_step, configs, vocoder, batchs, control_values)
+    synthesize(args, model, args.restore_step, configs, vocoder, batchs, control_values)
