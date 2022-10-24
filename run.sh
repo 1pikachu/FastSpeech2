@@ -1,5 +1,6 @@
 pip install -r requirements.txt
 
+mkdir output
 cp -r /home2/pytorch-broad-models/gpuoob/FastSpeech2/ckpt output/.
 cp /home2/pytorch-broad-models/gpuoob/FastSpeech2/generator_LJSpeech.pth.tar hifigan
 
