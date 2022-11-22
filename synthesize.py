@@ -123,9 +123,9 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
         for i, batch in enumerate(batchs):
             if i >= args.num_iter:
                 break
-            batch = to_device(batch, args.device)
             if args.jit and i == 0:
                 try:
+                    batch = to_device(batch, args.device)
                     model = torch.jit.trace(model, (*(batch[2:]), pitch_control, energy_control, duration_control), check_trace=False, strict=False)
                     print("---- JIT trace enable.")
                 except (RuntimeError, TypeError) as e:
@@ -134,6 +134,7 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
 
             # Forward
             elapsed = time.time()
+            batch = to_device(batch, args.device)
             with torch.autograd.profiler_legacy.profile(enabled=args.profile, use_xpu=True, record_shapes=False) as prof:
                 output = model(
                     *(batch[2:]),
@@ -173,9 +174,9 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
             for i, batch in enumerate(batchs):
                 if i >= args.num_iter:
                     break
-                batch = to_device(batch, args.device)
                 if args.jit and i == 0:
                     try:
+                        batch = to_device(batch, args.device)
                         model = torch.jit.trace(model, (*(batch[2:]), pitch_control, energy_control, duration_control), check_trace=False, strict=False)
                         print("---- JIT trace enable.")
                     except (RuntimeError, TypeError) as e:
@@ -184,6 +185,7 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
 
                 # Forward
                 elapsed = time.time()
+                batch = to_device(batch, args.device)
                 with torch.jit.fuser(fuser_mode):
                     output = model(
                         *(batch[2:]),
@@ -212,9 +214,9 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
             for i, batch in enumerate(batchs):
                 if i >= args.num_iter:
                     break
-                batch = to_device(batch, args.device)
                 if args.jit and i == 0:
                     try:
+                        batch = to_device(batch, args.device)
                         model = torch.jit.trace(model, (*(batch[2:]), pitch_control, energy_control, duration_control), check_trace=False, strict=False)
                         print("---- JIT trace enable.")
                     except (RuntimeError, TypeError) as e:
@@ -223,6 +225,7 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
 
                 # Forward
                 elapsed = time.time()
+                batch = to_device(batch, args.device)
                 output = model(
                     *(batch[2:]),
                     p_control=pitch_control,
@@ -239,9 +242,9 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
         for i, batch in enumerate(batchs):
             if i >= args.num_iter:
                 break
-            batch = to_device(batch, args.device)
             if args.jit and i == 0:
                 try:
+                    batch = to_device(batch, args.device)
                     model = torch.jit.trace(model, (*(batch[2:]), pitch_control, energy_control, duration_control), check_trace=False, strict=False)
                     print("---- JIT trace enable.")
                 except (RuntimeError, TypeError) as e:
@@ -250,6 +253,7 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
 
             # Forward
             elapsed = time.time()
+            batch = to_device(batch, args.device)
             with torch.jit.fuser(fuser_mode):
                 output = model(
                     *(batch[2:]),
@@ -267,9 +271,9 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
         for i, batch in enumerate(batchs):
             if i >= args.num_iter:
                 break
-            batch = to_device(batch, args.device)
             if args.jit and i == 0:
                 try:
+                    batch = to_device(batch, args.device)
                     model = torch.jit.trace(model, (*(batch[2:]), pitch_control, energy_control, duration_control), check_trace=False, strict=False)
                     print("---- JIT trace enable.")
                 except (RuntimeError, TypeError) as e:
@@ -278,6 +282,7 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
 
             # Forward
             elapsed = time.time()
+            batch = to_device(batch, args.device)
             output = model(
                 *(batch[2:]),
                 p_control=pitch_control,
@@ -417,7 +422,9 @@ if __name__ == "__main__":
 
     control_values = args.pitch_control, args.energy_control, args.duration_control
 
-    with torch.inference_mode():
+    with torch.no_grad():
+        datatype = torch.float16 if args.precision == "float16" else torch.bfloat16 if args.precision == "bfloat16" else torch.float
+        model = torch.xpu.optimize(model=model, dtype=datatype)
         if args.precision == "float16" and args.device == "cuda":
             print("---- Use autocast fp16 cuda")
             with torch.cuda.amp.autocast(enabled=True, dtype=torch.float16):
