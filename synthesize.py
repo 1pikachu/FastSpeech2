@@ -131,6 +131,7 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
                 except (RuntimeError, TypeError) as e:
                     print("---- JIT trace disable.")
                     print("failed to use PyTorch jit mode due to: ", e)
+                continue
 
             # Forward
             elapsed = time.time()
@@ -182,6 +183,7 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
                     except (RuntimeError, TypeError) as e:
                         print("---- JIT trace disable.")
                         print("failed to use PyTorch jit mode due to: ", e)
+                    continue
 
                 # Forward
                 elapsed = time.time()
@@ -222,6 +224,7 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
                     except (RuntimeError, TypeError) as e:
                         print("---- JIT trace disable.")
                         print("failed to use PyTorch jit mode due to: ", e)
+                    continue
 
                 # Forward
                 elapsed = time.time()
@@ -250,6 +253,7 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
                 except (RuntimeError, TypeError) as e:
                     print("---- JIT trace disable.")
                     print("failed to use PyTorch jit mode due to: ", e)
+                continue
 
             # Forward
             elapsed = time.time()
@@ -279,6 +283,7 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
                 except (RuntimeError, TypeError) as e:
                     print("---- JIT trace disable.")
                     print("failed to use PyTorch jit mode due to: ", e)
+                continue
 
             # Forward
             elapsed = time.time()
