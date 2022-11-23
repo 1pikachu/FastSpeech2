@@ -428,8 +428,10 @@ if __name__ == "__main__":
     control_values = args.pitch_control, args.energy_control, args.duration_control
 
     with torch.no_grad():
-        datatype = torch.float16 if args.precision == "float16" else torch.bfloat16 if args.precision == "bfloat16" else torch.float
-        model = torch.xpu.optimize(model=model, dtype=datatype)
+        model.eval()
+        if args.device == "xpu":
+            datatype = torch.float16 if args.precision == "float16" else torch.bfloat16 if args.precision == "bfloat16" else torch.float
+            model = torch.xpu.optimize(model=model, dtype=datatype)
         if args.precision == "float16" and args.device == "cuda":
             print("---- Use autocast fp16 cuda")
             with torch.cuda.amp.autocast(enabled=True, dtype=torch.float16):
