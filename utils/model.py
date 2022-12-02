@@ -22,7 +22,7 @@ def get_model(args, configs, device, train=False):
 
     if train:
         scheduled_optim = ScheduledOptim(
-            model, train_config, model_config, args.restore_step
+            model, train_config, model_config, args.restore_step, device, args.datatype
         )
         if args.restore_step:
             scheduled_optim.load_state_dict(ckpt["optimizer"])

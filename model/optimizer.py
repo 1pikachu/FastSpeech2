@@ -5,7 +5,7 @@ import numpy as np
 class ScheduledOptim:
     """ A simple wrapper class for learning rate scheduling """
 
-    def __init__(self, model, train_config, model_config, current_step):
+    def __init__(self, model, train_config, model_config, current_step, device, datatype):
 
         self._optimizer = torch.optim.Adam(
             model.parameters(),
@@ -13,6 +13,9 @@ class ScheduledOptim:
             eps=train_config["optimizer"]["eps"],
             weight_decay=train_config["optimizer"]["weight_decay"],
         )
+        if device == "xpu":
+            model, self._optimizer = torch.xpu.optimize(model=model, optimizer=self._optimizer, dtype=datatype)
+
         self.n_warmup_steps = train_config["optimizer"]["warm_up_step"]
         self.anneal_steps = train_config["optimizer"]["anneal_steps"]
         self.anneal_rate = train_config["optimizer"]["anneal_rate"]

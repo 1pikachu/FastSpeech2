@@ -56,9 +56,8 @@ def main(args, configs):
     )
 
     # Prepare model
+    # xpu.optimize see model/optmizer.py
     model, optimizer = get_model(args, configs, args.device, train=True)
-    if args.device == "xpu":
-        model, optimizer = torch.xpu.optimize(model=model, optimizer=optimizer, dtype=args.datatype)
     #model = nn.DataParallel(model)
     num_param = get_param_num(model)
     Loss = FastSpeech2Loss(preprocess_config, model_config).to(args.device)
@@ -104,11 +103,12 @@ def main(args, configs):
                         batch = to_device(batch, args.device)
 
                         # Forward
-                        output = model(*(batch[2:]))
+                        with torch.xpu.amp.autocast(enabled=True, dtype=args.datatype):
+                            output = model(*(batch[2:]))
 
-                        # Cal Loss
-                        losses = Loss(batch, output)
-                        total_loss = losses[0]
+                            # Cal Loss
+                            losses = Loss(batch, output)
+                            total_loss = losses[0]
 
                         # Backward
                         total_loss = total_loss / grad_acc_step
@@ -169,11 +169,12 @@ def main(args, configs):
                         batch = to_device(batch, args.device)
 
                         # Forward
-                        output = model(*(batch[2:]))
+                        with torch.cuda.amp.autocast(enabled=True, dtype=args.datatype):
+                            output = model(*(batch[2:]))
 
-                        # Cal Loss
-                        losses = Loss(batch, output)
-                        total_loss = losses[0]
+                            # Cal Loss
+                            losses = Loss(batch, output)
+                            total_loss = losses[0]
 
                         # Backward
                         total_loss = total_loss / grad_acc_step
@@ -210,11 +211,26 @@ def main(args, configs):
                     batch = to_device(batch, args.device)
 
                     # Forward
-                    output = model(*(batch[2:]))
+                    if args.device == "xpu":
+                        with torch.xpu.amp.autocast(enabled=True, dtype=args.datatype):
+                            output = model(*(batch[2:]))
 
-                    # Cal Loss
-                    losses = Loss(batch, output)
-                    total_loss = losses[0]
+                            # Cal Loss
+                            losses = Loss(batch, output)
+                            total_loss = losses[0]
+                    elif args.device == "cuda":
+                        with torch.cuda.amp.autocast(enabled=True, dtype=args.datatype):
+                            output = model(*(batch[2:]))
+
+                            # Cal Loss
+                            losses = Loss(batch, output)
+                            total_loss = losses[0]
+                    else:
+                        output = model(*(batch[2:]))
+
+                        # Cal Loss
+                        losses = Loss(batch, output)
+                        total_loss = losses[0]
 
                     # Backward
                     total_loss = total_loss / grad_acc_step
