@@ -17,6 +17,21 @@ from dataset import Dataset
 from evaluate import evaluate
 
 
+def trace_handler(p):
+    output = p.key_averages().table(sort_by="self_cpu_time_total")
+    print(output)
+    import pathlib
+    timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
+    if not os.path.exists(timeline_dir):
+        try:
+            os.makedirs(timeline_dir)
+        except:
+            pass
+    timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + \
+            '-' + str(p.step_num) + '-' + str(os.getpid()) + '.json'
+    p.export_chrome_trace(timeline_file)
+
+
 def main(args, configs):
     print("Prepare training ...")
 
@@ -78,112 +93,221 @@ def main(args, configs):
 
     total_time = 0.0
     total_count = 0
+    profile_len = min(len(loader), args.num_iters) // 2
 
     while True:
-        for batchs in loader:
-            for batch in batchs:
-                start_time = time.time()
-                batch = to_device(batch, args.device)
+        if args.profile and args.device == "xpu":
+            for batchs in loader:
+                for batch in batchs:
+                    with torch.autograd.profiler_legacy.profile(args.profile, use_xpu=True) as prof:
+                        start_time = time.time()
+                        batch = to_device(batch, args.device)
 
-                # Forward
-                output = model(*(batch[2:]))
+                        # Forward
+                        output = model(*(batch[2:]))
 
-                # Cal Loss
-                losses = Loss(batch, output)
-                total_loss = losses[0]
+                        # Cal Loss
+                        losses = Loss(batch, output)
+                        total_loss = losses[0]
 
-                # Backward
-                total_loss = total_loss / grad_acc_step
-                total_loss.backward()
+                        # Backward
+                        total_loss = total_loss / grad_acc_step
+                        total_loss.backward()
 
-                if step % grad_acc_step == 0:
-                    # Clipping gradients to avoid gradient explosion
-                    nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
+                        if step % grad_acc_step == 0:
+                            # Clipping gradients to avoid gradient explosion
+                            nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
 
-                    # Update weights
-                    optimizer.step_and_update_lr()
-                    optimizer.zero_grad()
-                if args.device == "xpu":
-                    torch.xpu.synchronize()
-                elif args.device == "cuda":
-                    torch.cuda.synchronize()
-                end_time = time.time()
-                if step >= args.num_warmup:
-                    total_time += end_time - start_time
-                    total_count += 1
-                print("iteration:{}, training time: {} sec.".format(step, end_time - start_time))
+                            # Update weights
+                            optimizer.step_and_update_lr()
+                            optimizer.zero_grad()
+                        torch.xpu.synchronize()
+                        end_time = time.time()
+                    if step >= args.num_warmup:
+                        total_time += end_time - start_time
+                        total_count += 1
+                    print("iteration:{}, training time: {} sec.".format(step, end_time - start_time))
+                    if cfg.model.oob_profile and i == profile_len:
+                        import pathlib
+                        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
+                        if not os.path.exists(timeline_dir):
+                            try:
+                                os.makedirs(timeline_dir)
+                            except:
+                                pass
+                        torch.save(prof.key_averages().table(sort_by="self_xpu_time_total"),
+                            timeline_dir+'profile.pt')
+                        torch.save(prof.key_averages(group_by_input_shape=True).table(),
+                            timeline_dir+'profile_detail.pt')
+                        torch.save(prof.table(sort_by="id", row_limit=100000),
+                            timeline_dir+'profile_detail_withId.pt')
+                        prof.export_chrome_trace(timeline_dir+"trace.json")
 
-                if step % log_step == 0:
-                    losses = [l.item() for l in losses]
-                    message1 = "Step {}/{}, ".format(step, total_step)
-                    message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}".format(
-                        *losses
-                    )
+                    if step == total_step:
+                        avg_time = total_time / total_count
+                        latency = avg_time / batch_size * 1000
+                        perf = batch_size / avg_time
+                        print("total time:{}, total count:{}".format(total_time, total_count))
+                        print('%d epoch training latency: %6.2f ms'%(epoch, latency))
+                        print('%d epoch training Throughput: %6.2f fps'%(epoch, perf))
+                        quit()
+                    step += 1
+        elif args.profile and args.device == "cuda":
+            with torch.profiler.profile(
+                activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+                record_shapes=True,
+                schedule=torch.profiler.schedule(
+                    wait=profile_len,
+                    warmup=2,
+                    active=1,
+                ),
+                on_trace_ready=trace_handler,
+            ) as p:
+                for batchs in loader:
+                    for batch in batchs:
+                        start_time = time.time()
+                        batch = to_device(batch, args.device)
 
-                    with open(os.path.join(train_log_path, "log.txt"), "a") as f:
-                        f.write(message1 + message2 + "\n")
+                        # Forward
+                        output = model(*(batch[2:]))
 
-                    log(train_logger, step, losses=losses)
+                        # Cal Loss
+                        losses = Loss(batch, output)
+                        total_loss = losses[0]
 
-                if step % synth_step == 0:
-                    fig, wav_reconstruction, wav_prediction, tag = synth_one_sample(
-                        batch,
-                        output,
-                        vocoder,
-                        model_config,
-                        preprocess_config,
-                    )
-                    log(
-                        train_logger,
-                        fig=fig,
-                        tag="Training/step_{}_{}".format(step, tag),
-                    )
-                    sampling_rate = preprocess_config["preprocessing"]["audio"][
-                        "sampling_rate"
-                    ]
-                    log(
-                        train_logger,
-                        audio=wav_reconstruction,
-                        sampling_rate=sampling_rate,
-                        tag="Training/step_{}_{}_reconstructed".format(step, tag),
-                    )
-                    log(
-                        train_logger,
-                        audio=wav_prediction,
-                        sampling_rate=sampling_rate,
-                        tag="Training/step_{}_{}_synthesized".format(step, tag),
-                    )
+                        # Backward
+                        total_loss = total_loss / grad_acc_step
+                        total_loss.backward()
 
-                #if step % val_step == 0:
-                #    model.eval()
-                #    message = evaluate(model, step, configs, val_logger, vocoder)
-                #    with open(os.path.join(val_log_path, "log.txt"), "a") as f:
-                #        f.write(message + "\n")
-                #    outer_bar.write(message)
+                        if step % grad_acc_step == 0:
+                            # Clipping gradients to avoid gradient explosion
+                            nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
 
-                #    model.train()
+                            # Update weights
+                            optimizer.step_and_update_lr()
+                            optimizer.zero_grad()
+                        torch.cuda.synchronize()
+                        end_time = time.time()
+                        p.step()
+                        if step >= args.num_warmup:
+                            total_time += end_time - start_time
+                            total_count += 1
+                        print("iteration:{}, training time: {} sec.".format(step, end_time - start_time))
 
-                #if step % save_step == 0:
-                #    torch.save(
-                #        {
-                #            "model": model.module.state_dict(),
-                #            "optimizer": optimizer._optimizer.state_dict(),
-                #        },
-                #        os.path.join(
-                #            train_config["path"]["ckpt_path"],
-                #            "{}.pth.tar".format(step),
-                #        ),
-                #    )
+                        if step == total_step:
+                            avg_time = total_time / total_count
+                            latency = avg_time / batch_size * 1000
+                            perf = batch_size / avg_time
+                            print("total time:{}, total count:{}".format(total_time, total_count))
+                            print('%d epoch training latency: %6.2f ms'%(epoch, latency))
+                            print('%d epoch training Throughput: %6.2f fps'%(epoch, perf))
+                            quit()
+                        step += 1
+        else:
+            for batchs in loader:
+                for batch in batchs:
+                    start_time = time.time()
+                    batch = to_device(batch, args.device)
 
-                if step == total_step:
-                    avg_time = total_time / total_count
-                    latency = avg_time / batch_size * 1000
-                    perf = batch_size / avg_time
-                    print("total time:{}, total count:{}".format(total_time, total_count))
-                    print('%d epoch training latency: %6.2f ms'%(epoch, latency))
-                    print('%d epoch training Throughput: %6.2f fps'%(epoch, perf))
-                    quit()
-                step += 1
+                    # Forward
+                    output = model(*(batch[2:]))
+
+                    # Cal Loss
+                    losses = Loss(batch, output)
+                    total_loss = losses[0]
+
+                    # Backward
+                    total_loss = total_loss / grad_acc_step
+                    total_loss.backward()
+
+                    if step % grad_acc_step == 0:
+                        # Clipping gradients to avoid gradient explosion
+                        nn.utils.clip_grad_norm_(model.parameters(), grad_clip_thresh)
+
+                        # Update weights
+                        optimizer.step_and_update_lr()
+                        optimizer.zero_grad()
+                    if args.device == "xpu":
+                        torch.xpu.synchronize()
+                    elif args.device == "cuda":
+                        torch.cuda.synchronize()
+                    end_time = time.time()
+                    if step >= args.num_warmup:
+                        total_time += end_time - start_time
+                        total_count += 1
+                    print("iteration:{}, training time: {} sec.".format(step, end_time - start_time))
+
+                    #if step % log_step == 0:
+                    #    losses = [l.item() for l in losses]
+                    #    message1 = "Step {}/{}, ".format(step, total_step)
+                    #    message2 = "Total Loss: {:.4f}, Mel Loss: {:.4f}, Mel PostNet Loss: {:.4f}, Pitch Loss: {:.4f}, Energy Loss: {:.4f}, Duration Loss: {:.4f}".format(
+                    #        *losses
+                    #    )
+
+                    #    with open(os.path.join(train_log_path, "log.txt"), "a") as f:
+                    #        f.write(message1 + message2 + "\n")
+
+                    #    log(train_logger, step, losses=losses)
+
+                    #if step % synth_step == 0:
+                    #    fig, wav_reconstruction, wav_prediction, tag = synth_one_sample(
+                    #        batch,
+                    #        output,
+                    #        vocoder,
+                    #        model_config,
+                    #        preprocess_config,
+                    #    )
+                    #    log(
+                    #        train_logger,
+                    #        fig=fig,
+                    #        tag="Training/step_{}_{}".format(step, tag),
+                    #    )
+                    #    sampling_rate = preprocess_config["preprocessing"]["audio"][
+                    #        "sampling_rate"
+                    #    ]
+                    #    log(
+                    #        train_logger,
+                    #        audio=wav_reconstruction,
+                    #        sampling_rate=sampling_rate,
+                    #        tag="Training/step_{}_{}_reconstructed".format(step, tag),
+                    #    )
+                    #    log(
+                    #        train_logger,
+                    #        audio=wav_prediction,
+                    #        sampling_rate=sampling_rate,
+                    #        tag="Training/step_{}_{}_synthesized".format(step, tag),
+                    #    )
+
+                    #if step % val_step == 0:
+                    #    model.eval()
+                    #    message = evaluate(model, step, configs, val_logger, vocoder)
+                    #    with open(os.path.join(val_log_path, "log.txt"), "a") as f:
+                    #        f.write(message + "\n")
+                    #    outer_bar.write(message)
+
+                    #    model.train()
+
+                    #if step % save_step == 0:
+                    #    torch.save(
+                    #        {
+                    #            "model": model.module.state_dict(),
+                    #            "optimizer": optimizer._optimizer.state_dict(),
+                    #        },
+                    #        os.path.join(
+                    #            train_config["path"]["ckpt_path"],
+                    #            "{}.pth.tar".format(step),
+                    #        ),
+                    #    )
+
+                    if step == total_step:
+                        avg_time = total_time / total_count
+                        latency = avg_time / batch_size * 1000
+                        perf = batch_size / avg_time
+                        print("total time:{}, total count:{}".format(total_time, total_count))
+                        print('%d epoch training latency: %6.2f ms'%(epoch, latency))
+                        print('%d epoch training Throughput: %6.2f fps'%(epoch, perf))
+                        quit()
+                    step += 1
         epoch += 1
 
 
