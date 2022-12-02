@@ -10,6 +10,9 @@ function main {
 
     # requirements
     pip install -r requirements.txt
+    if [[ "${device}" == "xpu" ]];then
+        pip install protobuf==3.19.0
+    fi
     mkdir output
     cp -r ${CKPT_DIR} output/.
     cp ${DATASET_DIR} hifigan
