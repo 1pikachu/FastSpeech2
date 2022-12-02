@@ -11,12 +11,13 @@ from utils.tools import pad_1D, pad_2D
 
 class Dataset(Dataset):
     def __init__(
-        self, filename, preprocess_config, train_config, sort=False, drop_last=False
+        self, filename, preprocess_config, train_config, args, sort=False, drop_last=False
     ):
         self.dataset_name = preprocess_config["dataset"]
         self.preprocessed_path = preprocess_config["path"]["preprocessed_path"]
         self.cleaners = preprocess_config["preprocessing"]["text"]["text_cleaners"]
-        self.batch_size = train_config["optimizer"]["batch_size"]
+        #self.batch_size = train_config["optimizer"]["batch_size"]
+        self.batch_size = args.batch_size
 
         self.basename, self.speaker, self.text, self.raw_text = self.process_meta(
             filename
