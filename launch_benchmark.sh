@@ -18,6 +18,14 @@ function main {
     model_name_list=($(echo "${model_name}" |sed 's/,/ /g'))
     batch_size_list=($(echo "${batch_size}" |sed 's/,/ /g'))
 
+    if [[ "${mode_name}" == "train" ]];then
+	exec_cmd=" train.py -p config/LJSpeech/preprocess.yaml -m config/LJSpeech/model.yaml -t config/LJSpeech/train.yaml "
+    else
+	exec_cmd=" synthesize.py --source preprocessed_data/LJSpeech/val.txt \
+            --restore_step 900000 --mode batch -p config/LJSpeech/preprocess.yaml \
+            -m config/LJSpeech/model.yaml -t config/LJSpeech/train.yaml "
+    fi
+
     # generate benchmark
     for model_name in ${model_name_list[@]}
     do
@@ -56,15 +64,22 @@ function generate_core {
             OOB_EXEC_HEADER+=" -C $(echo ${device_array[i]} |awk -F ';' '{print $1}') "
         elif [ "${device}" == "cuda" ];then
             OOB_EXEC_HEADER=" CUDA_VISIBLE_DEVICES=${device_array[i]} "
-	    addtion_options+=" --nv_fuser "
+	    if [[ "${mode_name}" == "realtime" ]];then
+                addtion_options+=" --nv_fuser --jit "
+            fi
+	elif [ "${device}" == "xpu" ];then
+	    if [[ "${mode_name}" == "train" ]];then
+	    	OOB_EXEC_HEADER=" IPEX_XPU_ONEDNN_LAYOUT=0 "
+	    fi
+	    if [[ "${mode_name}" == "realtime" ]];then
+                addtion_options+=" --jit "
+	    fi
         fi
         printf " ${OOB_EXEC_HEADER} \
-	    python synthesize.py --source preprocessed_data/LJSpeech/val.txt \
-	    	--restore_step 900000 --mode batch -p config/LJSpeech/preprocess.yaml \
-		-m config/LJSpeech/model.yaml -t config/LJSpeech/train.yaml \
+	    python ${exec_cmd} \
 	    	--num_iter $num_iter --num_warmup $num_warmup \
 		--channels_last $channels_last --precision $precision \
-		--jit --device ${device} --batch_size ${batch_size} \
+		--device ${device} --batch_size ${batch_size} \
                 ${addtion_options} \
         > ${log_file} 2>&1 &  \n" |tee -a ${excute_cmd_file}
         if [ "${numa_nodes_use}" == "0" ];then
