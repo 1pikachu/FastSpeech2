@@ -71,9 +71,6 @@ function generate_core {
                 addtion_options+=" --nv_fuser --jit "
             fi
 	elif [ "${device}" == "xpu" ];then
-	    if [[ "${mode_name}" == "train" ]];then
-	    	OOB_EXEC_HEADER=" IPEX_XPU_ONEDNN_LAYOUT=0 "
-	    fi
 	    if [[ "${mode_name}" == "realtime" ]];then
                 addtion_options+=" --jit "
 	    fi
