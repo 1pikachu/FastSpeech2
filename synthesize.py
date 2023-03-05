@@ -118,20 +118,38 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
     total_time = 0.0
     total_sample = 0
     profile_len = min(len(batchs), args.num_iter + args.num_warmup) // 2
+    if args.jit:
+        for i, batch in enumerate(batchs):
+            try:
+                batch = to_device(batch, args.device)
+                model = torch.jit.trace(model, (*(batch[2:]), pitch_control, energy_control, duration_control), check_trace=False, strict=False)
+                print("---- JIT trace enable.")
+            except (RuntimeError, TypeError) as e:
+                print("---- JIT trace disable.")
+                print("failed to use PyTorch jit mode due to: ", e)
+            break
+
+    if args.warmup_for_dynamicShape:
+        for i, batch in enumerate(batchs):
+            if i >= args.num_iter:
+                break
+
+            print("--------input shape---------")
+            for inp in batch[2:]:
+                print("shape:{}".format(inp.shape))
+            # Forward
+            batch = to_device(batch, args.device)
+            output = model(
+                *(batch[2:]),
+                p_control=pitch_control,
+                e_control=energy_control,
+                d_control=duration_control
+            )
 
     if args.profile and args.device == "xpu":
         for i, batch in enumerate(batchs):
             if i >= args.num_iter:
                 break
-            if args.jit and i == 0:
-                try:
-                    batch = to_device(batch, args.device)
-                    model = torch.jit.trace(model, (*(batch[2:]), pitch_control, energy_control, duration_control), check_trace=False, strict=False)
-                    print("---- JIT trace enable.")
-                except (RuntimeError, TypeError) as e:
-                    print("---- JIT trace disable.")
-                    print("failed to use PyTorch jit mode due to: ", e)
-                continue
 
             # Forward
             elapsed = time.time()
@@ -164,9 +182,13 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
                 torch.save(prof.table(sort_by="id", row_limit=100000),
                     timeline_dir+'profile_detail_withId.pt')
                 prof.export_chrome_trace(timeline_dir+"trace.json")
-    elif args.profile and args.device == "cuda":
+    elif args.profile:
+        if args.device == "cuda":
+            profile_act = [torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA]
+        else:
+            profile_act = [torch.profiler.ProfilerActivity.CPU]
         with torch.profiler.profile(
-            activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+            activities=profile_act,
             record_shapes=True,
             schedule=torch.profiler.schedule(
                 wait=profile_len,
@@ -178,15 +200,6 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
             for i, batch in enumerate(batchs):
                 if i >= args.num_iter:
                     break
-                if args.jit and i == 0:
-                    try:
-                        batch = to_device(batch, args.device)
-                        model = torch.jit.trace(model, (*(batch[2:]), pitch_control, energy_control, duration_control), check_trace=False, strict=False)
-                        print("---- JIT trace enable.")
-                    except (RuntimeError, TypeError) as e:
-                        print("---- JIT trace disable.")
-                        print("failed to use PyTorch jit mode due to: ", e)
-                    continue
 
                 # Forward
                 elapsed = time.time()
@@ -198,106 +211,42 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
                         e_control=energy_control,
                         d_control=duration_control
                     )
-                torch.cuda.synchronize()
+                if args.device == "cuda":
+                    torch.cuda.synchronize()
                 elapsed = time.time() - elapsed
                 p.step()
                 print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
                 if i >= args.num_warmup:
                     total_sample += args.batch_size
                     total_time += elapsed
-    elif args.profile and args.device == "cpu":
-        with torch.profiler.profile(
-            activities=[torch.profiler.ProfilerActivity.CPU],
-            record_shapes=True,
-            schedule=torch.profiler.schedule(
-                wait=profile_len,
-                warmup=2,
-                active=1,
-            ),
-            on_trace_ready=trace_handler,
-        ) as p:
-            for i, batch in enumerate(batchs):
-                if i >= args.num_iter:
-                    break
-                if args.jit and i == 0:
-                    try:
-                        batch = to_device(batch, args.device)
-                        model = torch.jit.trace(model, (*(batch[2:]), pitch_control, energy_control, duration_control), check_trace=False, strict=False)
-                        print("---- JIT trace enable.")
-                    except (RuntimeError, TypeError) as e:
-                        print("---- JIT trace disable.")
-                        print("failed to use PyTorch jit mode due to: ", e)
-                    continue
-
-                # Forward
-                elapsed = time.time()
-                batch = to_device(batch, args.device)
-                output = model(
-                    *(batch[2:]),
-                    p_control=pitch_control,
-                    e_control=energy_control,
-                    d_control=duration_control
-                )
-                elapsed = time.time() - elapsed
-                p.step()
-                print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
-                if i >= args.num_warmup:
-                    total_sample += args.batch_size
-                    total_time += elapsed
-    elif not args.profile and args.device == "cuda":
-        for i, batch in enumerate(batchs):
-            if i >= args.num_iter:
-                break
-            if args.jit and i == 0:
-                try:
-                    batch = to_device(batch, args.device)
-                    model = torch.jit.trace(model, (*(batch[2:]), pitch_control, energy_control, duration_control), check_trace=False, strict=False)
-                    print("---- JIT trace enable.")
-                except (RuntimeError, TypeError) as e:
-                    print("---- JIT trace disable.")
-                    print("failed to use PyTorch jit mode due to: ", e)
-                continue
-
-            # Forward
-            elapsed = time.time()
-            batch = to_device(batch, args.device)
-            with torch.jit.fuser(fuser_mode):
-                output = model(
-                    *(batch[2:]),
-                    p_control=pitch_control,
-                    e_control=energy_control,
-                    d_control=duration_control
-                )
-            torch.cuda.synchronize()
-            elapsed = time.time() - elapsed
-            print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
-            if i >= args.num_warmup:
-                total_sample += args.batch_size
-                total_time += elapsed
     else:
+        if args.device == "cuda":
+            context_func = torch.jit.fuser
+        else:
+            import contextlib
+            context_func = contextlib.nullcontext
+            fuser_mode = None
+
         for i, batch in enumerate(batchs):
             if i >= args.num_iter:
                 break
-            if args.jit and i == 0:
-                try:
-                    batch = to_device(batch, args.device)
-                    model = torch.jit.trace(model, (*(batch[2:]), pitch_control, energy_control, duration_control), check_trace=False, strict=False)
-                    print("---- JIT trace enable.")
-                except (RuntimeError, TypeError) as e:
-                    print("---- JIT trace disable.")
-                    print("failed to use PyTorch jit mode due to: ", e)
-                continue
 
             # Forward
+            print("--------input shape---------")
+            for inp in batch[2:]:
+                print("shape:{}".format(inp.shape))
             elapsed = time.time()
             batch = to_device(batch, args.device)
-            output = model(
-                *(batch[2:]),
-                p_control=pitch_control,
-                e_control=energy_control,
-                d_control=duration_control
-            )
-            if args.device == "xpu":
+            with context_func(fuser_mode):
+                output = model(
+                    *(batch[2:]),
+                    p_control=pitch_control,
+                    e_control=energy_control,
+                    d_control=duration_control
+                )
+            if args.device == "cuda":
+                torch.cuda.synchronize()
+            elif args.device == "xpu":
                 torch.xpu.synchronize()
             elapsed = time.time() - elapsed
             print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
@@ -381,6 +330,7 @@ if __name__ == "__main__":
     parser.add_argument('--num_warmup', default=20, type=int, help='test warmup')
     parser.add_argument('--device', default='cpu', type=str, help='cpu, cuda or xpu')
     parser.add_argument('--nv_fuser', action='store_true', default=False, help='enable nv fuser')
+    parser.add_argument('--warmup_for_dynamicShape', action='store_true', default=False, help='warmup')
     args = parser.parse_args()
     print(args)
 
