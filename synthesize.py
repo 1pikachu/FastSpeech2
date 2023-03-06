@@ -136,7 +136,7 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
 
             print("--------input shape---------")
             for inp in batch[2:]:
-                print("shape:{}".format(inp.shape))
+                print("shape:{}".format(inp.shape), flush=True)
             # Forward
             batch = to_device(batch, args.device)
             output = model(
@@ -234,7 +234,7 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
             # Forward
             print("--------input shape---------")
             for inp in batch[2:]:
-                print("shape:{}".format(inp.shape))
+                print("shape:{}".format(inp.shape), flush=True)
             elapsed = time.time()
             batch = to_device(batch, args.device)
             with context_func(fuser_mode):
