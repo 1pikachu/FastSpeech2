@@ -76,7 +76,7 @@ function generate_core {
 	    fi
         fi
         printf " ${OOB_EXEC_HEADER} \
-	    python ${exec_cmd} \
+	    python -u ${exec_cmd} \
 	    	--num_iter $num_iter --num_warmup $num_warmup \
 		--channels_last $channels_last --precision $precision \
 		--device ${device} --batch_size ${batch_size} \
