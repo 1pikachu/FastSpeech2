@@ -67,19 +67,20 @@ function generate_core {
             OOB_EXEC_HEADER+=" -C $(echo ${device_array[i]} |awk -F ';' '{print $1}') "
         elif [ "${device}" == "cuda" ];then
             OOB_EXEC_HEADER=" CUDA_VISIBLE_DEVICES=${device_array[i]} "
-	    if [[ "${mode_name}" == "realtime" ]];then
+	        if [[ "${mode_name}" == "realtime" ]];then
                 addtion_options+=" --nv_fuser --jit "
             fi
-	elif [ "${device}" == "xpu" ];then
-	    if [[ "${mode_name}" == "realtime" ]];then
+	    elif [ "${device}" == "xpu" ];then
+            if [[ "${mode_name}" == "realtime" ]];then
                 addtion_options+=" --jit "
-	    fi
+            fi
+            OOB_EXEC_HEADER=" ZE_AFFINITY_MASK=${i} "
         fi
         printf " ${OOB_EXEC_HEADER} \
-	    python -u ${exec_cmd} \
-	    	--num_iter $num_iter --num_warmup $num_warmup \
-		--channels_last $channels_last --precision $precision \
-		--device ${device} --batch_size ${batch_size} \
+	        python -u ${exec_cmd} \
+                --num_iter $num_iter --num_warmup $num_warmup \
+                --channels_last $channels_last --precision $precision \
+                --device ${device} --batch_size ${batch_size} \
                 ${addtion_options} \
         > ${log_file} 2>&1 &  \n" |tee -a ${excute_cmd_file}
         if [ "${numa_nodes_use}" == "0" ];then
