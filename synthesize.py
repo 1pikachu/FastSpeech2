@@ -115,6 +115,10 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
        fuser_mode = "none"
     print("---- fuser mode:", fuser_mode)
 
+    if args.compile:
+        print("----enable compiler")
+        model = torch.compile(model, backend=args.backend, options={"freezing": True})
+
     total_time = 0.0
     total_sample = 0
     profile_len = min(len(batchs), args.num_iter + args.num_warmup) // 2
@@ -331,6 +335,8 @@ if __name__ == "__main__":
     parser.add_argument('--device', default='cpu', type=str, help='cpu, cuda or xpu')
     parser.add_argument('--nv_fuser', action='store_true', default=False, help='enable nv fuser')
     parser.add_argument('--warmup_for_dynamicShape', action='store_true', default=False, help='warmup')
+    parser.add_argument('--compile', action='store_true', default=False, help='compile model')
+    parser.add_argument('--backend', default="inductor", type=str, help='backend')
     args = parser.parse_args()
     print(args)
 
