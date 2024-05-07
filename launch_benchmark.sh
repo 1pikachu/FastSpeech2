@@ -67,14 +67,14 @@ function generate_core {
             OOB_EXEC_HEADER+=" -C $(echo ${device_array[i]} |awk -F ';' '{print $1}') "
         elif [ "${device}" == "cuda" ];then
             OOB_EXEC_HEADER=" CUDA_VISIBLE_DEVICES=${device_array[i]} "
-	        if [[ "${mode_name}" == "realtime" ]];then
-                addtion_options+=" --nv_fuser --jit "
-            fi
+            addtion_options+=" --nv_fuser "
 	    elif [ "${device}" == "xpu" ];then
-            if [[ "${mode_name}" == "realtime" ]];then
-                addtion_options+=" --jit "
-            fi
             OOB_EXEC_HEADER=" ZE_AFFINITY_MASK=${i} "
+        fi
+        if [[ "${addtion_options}" =~ "--compile" ]];then
+            echo "run with compile"
+        elif [[ "${mode_name}" == "realtime" ]];then
+            addtion_options+=" --jit "
         fi
         printf " ${OOB_EXEC_HEADER} \
 	        python -u ${exec_cmd} \
