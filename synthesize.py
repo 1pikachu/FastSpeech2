@@ -158,7 +158,9 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
             # Forward
             elapsed = time.time()
             batch = to_device(batch, args.device)
-            with torch.autograd.profiler_legacy.profile(enabled=args.profile, use_xpu=True, record_shapes=False) as prof:
+            profile_activity = [torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.XPU]
+            schedule = torch.profiler.schedule(wait=profile_len, warmup=3, active=1)
+            with (torch.profiler.profile(activities=profile_activity, schedule=schedule)) as prof:
                 output = model(
                     *(batch[2:]),
                     p_control=pitch_control,
@@ -179,7 +181,7 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
                         os.makedirs(timeline_dir)
                     except:
                         pass
-                torch.save(prof.key_averages().table(sort_by="self_xpu_time_total"),
+                torch.save(prof.key_averages().table(sort_by="self_xpu_time_total".format(args.device), row_limit=100000),
                     timeline_dir+'profile.pt')
                 torch.save(prof.key_averages(group_by_input_shape=True).table(),
                     timeline_dir+'profile_detail.pt')
