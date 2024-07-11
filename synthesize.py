@@ -16,10 +16,10 @@ from text import text_to_sequence
 import time
 import os
 import sys
-#sys.path.append(os.getcwd())
+sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 #print("os.path.dirname(__file__):", os.path.dirname(__file__))
 try:
-    from fastSpeech2.context_func import context_func
+    from context_func import context_func
 except ModuleNotFoundError as e:
     print("!!!pls check how to add context_func.py from launch_benchmark.sh")
     sys.exit(0)
