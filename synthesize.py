@@ -19,7 +19,7 @@ import sys
 #sys.path.append(os.getcwd())
 #print("os.path.dirname(__file__):", os.path.dirname(__file__))
 try:
-    from .context_func import context_func
+    from fastSpeech2.context_func import context_func
 except ModuleNotFoundError as e:
     print("!!!pls check how to add context_func.py from launch_benchmark.sh")
     sys.exit(0)
