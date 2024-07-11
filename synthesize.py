@@ -161,12 +161,12 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
                 # Forward
                 elapsed = time.time()
                 batch = to_device(batch, args.device)
-                    output = model(
-                        *(batch[2:]),
-                        p_control=pitch_control,
-                        e_control=energy_control,
-                        d_control=duration_control
-                    )
+                output = model(
+                    *(batch[2:]),
+                    p_control=pitch_control,
+                    e_control=energy_control,
+                    d_control=duration_control
+                )
                 torch.xpu.synchronize()
                 elapsed = time.time() - elapsed
                 if args.profile:
