@@ -7,7 +7,7 @@ function main {
     init_params $@
     fetch_device_info
     set_environment
-
+    cp oob-common/context_func.py ./
     # requirements
     pip install -r requirements.txt
     if [[ "${device}" == "xpu" ]];then
