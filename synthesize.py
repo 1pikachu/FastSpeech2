@@ -151,43 +151,45 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
             )
 
     if args.profile and args.device == "xpu":
-        for i, batch in enumerate(batchs):
-            if i >= args.num_iter:
-                break
+        profile_activity = [torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.XPU]
+        schedule = torch.profiler.schedule(wait=profile_len, warmup=3, active=1)
+        with (torch.profiler.profile(activities=profile_activity, schedule=schedule)) as prof:
+            for i, batch in enumerate(batchs):
+                if i >= args.num_iter:
+                    break
 
-            # Forward
-            elapsed = time.time()
-            batch = to_device(batch, args.device)
-            profile_activity = [torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.XPU]
-            schedule = torch.profiler.schedule(wait=profile_len, warmup=3, active=1)
-            with (torch.profiler.profile(activities=profile_activity, schedule=schedule)) as prof:
-                output = model(
-                    *(batch[2:]),
-                    p_control=pitch_control,
-                    e_control=energy_control,
-                    d_control=duration_control
-                )
-            torch.xpu.synchronize()
-            elapsed = time.time() - elapsed
-            print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
-            if i >= args.num_warmup:
-                total_sample += args.batch_size
-                total_time += elapsed
-            if args.profile and i == profile_len:
-                import pathlib
-                timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
-                if not os.path.exists(timeline_dir):
-                    try:
-                        os.makedirs(timeline_dir)
-                    except:
-                        pass
-                torch.save(prof.key_averages().table(sort_by="self_xpu_time_total"),
-                    timeline_dir+'profile.pt')
-                torch.save(prof.key_averages(group_by_input_shape=True).table(),
-                    timeline_dir+'profile_detail.pt')
-                torch.save(prof.table(sort_by="id", row_limit=100000),
-                    timeline_dir+'profile_detail_withId.pt')
-                prof.export_chrome_trace(timeline_dir+"trace.json")
+                # Forward
+                elapsed = time.time()
+                batch = to_device(batch, args.device)
+                    output = model(
+                        *(batch[2:]),
+                        p_control=pitch_control,
+                        e_control=energy_control,
+                        d_control=duration_control
+                    )
+                torch.xpu.synchronize()
+                elapsed = time.time() - elapsed
+                if args.profile:
+                    prof.step()
+                print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
+                if i >= args.num_warmup:
+                    total_sample += args.batch_size
+                    total_time += elapsed
+                if args.profile and i == profile_len:
+                    import pathlib
+                    timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
+                    if not os.path.exists(timeline_dir):
+                        try:
+                            os.makedirs(timeline_dir)
+                        except:
+                            pass
+                    torch.save(prof.key_averages().table(sort_by="self_xpu_time_total"),
+                        timeline_dir+'profile.pt')
+                    torch.save(prof.key_averages(group_by_input_shape=True).table(),
+                        timeline_dir+'profile_detail.pt')
+                    torch.save(prof.table(sort_by="id", row_limit=100000),
+                        timeline_dir+'profile_detail_withId.pt')
+                    prof.export_chrome_trace(timeline_dir+"trace.json")
     elif args.profile:
         if args.device == "cuda":
             profile_act = [torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA]
