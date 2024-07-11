@@ -16,9 +16,13 @@ from text import text_to_sequence
 import time
 import os
 import sys
-sys.path.append(os.getcwd())
+#sys.path.append(os.getcwd())
 #print("os.path.dirname(__file__):", os.path.dirname(__file__))
-from context_func import context_func
+try:
+    from .context_func import context_func
+except ModuleNotFoundError as e:
+    print("!!!pls check how to add context_func.py from launch_benchmark.sh")
+    sys.exit(0)
 
 def read_lexicon(lex_path):
     lexicon = {}
@@ -176,9 +180,9 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
             if args.profile:
                 prof.step()
             print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
-    if i >= args.num_warmup:
-        total_sample += args.batch_size
-        total_time += elapsed
+            if i >= args.num_warmup:
+                total_sample += args.batch_size
+                total_time += elapsed
     # if args.profile and i == profile_len:
     #     import pathlib
     #     timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
@@ -232,39 +236,39 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
 #                 total_sample += args.batch_size
 #                 total_time += elapsed
     #else:
-    if args.device == "cuda":
-        context_func = torch.jit.fuser
-    else:
-        import contextlib
-        context_func = contextlib.nullcontext
-        fuser_mode = None
+    # if args.device == "cuda":
+    #     context_func = torch.jit.fuser
+    # else:
+    #     import contextlib
+    #     context_func = contextlib.nullcontext
+    #     fuser_mode = None
 
-    for i, batch in enumerate(batchs):
-        if i >= args.num_iter:
-            break
+    # for i, batch in enumerate(batchs):
+    #     if i >= args.num_iter:
+    #         break
 
-        # Forward
-        print("--------input shape---------")
-        for inp in batch[2:]:
-            print("shape:{}".format(inp.shape), flush=True)
-        elapsed = time.time()
-        batch = to_device(batch, args.device)
-        with context_func(fuser_mode):
-            output = model(
-                *(batch[2:]),
-                p_control=pitch_control,
-                e_control=energy_control,
-                d_control=duration_control
-            )
-        if args.device == "cuda":
-            torch.cuda.synchronize()
-        elif args.device == "xpu":
-            torch.xpu.synchronize()
-        elapsed = time.time() - elapsed
-        print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
-        if i >= args.num_warmup:
-            total_sample += args.batch_size
-            total_time += elapsed
+    #     # Forward
+    #     print("--------input shape---------")
+    #     for inp in batch[2:]:
+    #         print("shape:{}".format(inp.shape), flush=True)
+    #     elapsed = time.time()
+    #     batch = to_device(batch, args.device)
+    #     with context_func(fuser_mode):
+    #         output = model(
+    #             *(batch[2:]),
+    #             p_control=pitch_control,
+    #             e_control=energy_control,
+    #             d_control=duration_control
+    #         )
+    #     if args.device == "cuda":
+    #         torch.cuda.synchronize()
+    #     elif args.device == "xpu":
+    #         torch.xpu.synchronize()
+    #     elapsed = time.time() - elapsed
+    #     print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
+    #     if i >= args.num_warmup:
+    #         total_sample += args.batch_size
+    #         total_time += elapsed
 
     latency = total_time / total_sample * 1000
     throughput = total_sample / total_time
