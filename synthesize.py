@@ -16,7 +16,7 @@ from text import text_to_sequence
 import time
 import os
 import sys
-sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.getcwd(__file__))
 #print("os.path.dirname(__file__):", os.path.dirname(__file__))
 from context_func import context_func
 
