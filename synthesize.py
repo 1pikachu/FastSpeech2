@@ -181,7 +181,7 @@ def synthesize(args, model, step, configs, vocoder, batchs, control_values):
                         os.makedirs(timeline_dir)
                     except:
                         pass
-                torch.save(prof.key_averages().table(sort_by="self_xpu_time_total".format(args.device), row_limit=100000),
+                torch.save(prof.key_averages().table(sort_by="self_xpu_time_total"),
                     timeline_dir+'profile.pt')
                 torch.save(prof.key_averages(group_by_input_shape=True).table(),
                     timeline_dir+'profile_detail.pt')
