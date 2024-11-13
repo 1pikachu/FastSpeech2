@@ -349,11 +349,13 @@ if __name__ == "__main__":
     parser.add_argument('--warmup_for_dynamicShape', action='store_true', default=False, help='warmup')
     parser.add_argument('--compile', action='store_true', default=False, help='compile model')
     parser.add_argument('--backend', default="inductor", type=str, help='backend')
+    parser.add_argument('--ipex', action='store_true', default=False)
     args = parser.parse_args()
     print(args)
 
-    if args.device == "xpu":
+    if args.device == "xpu" and args.ipex:
         import intel_extension_for_pytorch
+        print("Use IPEX")
     elif args.device == "cuda":
         torch.backends.cuda.matmul.allow_tf32 = False
 
@@ -402,7 +404,8 @@ if __name__ == "__main__":
         model.eval()
         if args.device == "xpu":
             datatype = torch.float16 if args.precision == "float16" else torch.bfloat16 if args.precision == "bfloat16" else torch.float
-            model = torch.xpu.optimize(model=model, dtype=datatype)
+            if args.ipex:
+                model = torch.xpu.optimize(model=model, dtype=datatype)
         if args.precision == "float16" and args.device == "cuda":
             print("---- Use autocast fp16 cuda")
             with torch.cuda.amp.autocast(enabled=True, dtype=torch.float16):

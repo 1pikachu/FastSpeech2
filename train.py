@@ -351,11 +351,13 @@ if __name__ == "__main__":
     parser.add_argument('--num_iters', default=200, type=int, help='test iterations')
     parser.add_argument('--num_warmup', default=20, type=int, help='test warmup')
     parser.add_argument('--device', default='cpu', type=str, help='cpu, cuda or xpu')
+    parser.add_argument('--ipex', action='store_true', default=False)
     args = parser.parse_args()
     print(args)
 
-    if args.device == "xpu":
+    if args.device == "xpu" and args.ipex:
         import intel_extension_for_pytorch
+        print("Use IPEX")
     elif args.device == "cuda":
         torch.backends.cuda.matmul.allow_tf32 = False
 
