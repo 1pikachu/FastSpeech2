@@ -7,7 +7,7 @@ function main {
     init_params $@
     fetch_device_info
     set_environment
-
+    cp oob-common/context_func.py ./
     # requirements
     pip install -r requirements.txt
     if [[ "${device}" == "xpu" ]];then
@@ -72,8 +72,6 @@ function generate_core {
         fi
         if [[ "${addtion_options}" =~ "--compile" ]];then
             echo "run with compile"
-        elif [[ "${mode_name}" == "realtime" ]];then
-            addtion_options+=" --jit "
         fi
         printf " ${OOB_EXEC_HEADER} \
 	        python -u ${exec_cmd} \
