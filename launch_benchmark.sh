@@ -22,9 +22,9 @@ function main {
     batch_size_list=($(echo "${batch_size}" |sed 's/,/ /g'))
 
     if [[ "${mode_name}" == "train" ]];then
-	exec_cmd=" train.py -p config/LJSpeech/preprocess.yaml -m config/LJSpeech/model.yaml -t config/LJSpeech/train.yaml "
+	      exec_cmd=" train.py -p config/LJSpeech/preprocess.yaml -m config/LJSpeech/model.yaml -t config/LJSpeech/train.yaml "
     else
-	exec_cmd=" synthesize.py --source preprocessed_data/LJSpeech/val.txt \
+	      exec_cmd=" synthesize.py --source preprocessed_data/LJSpeech/val.txt \
             --restore_step 900000 --mode batch -p config/LJSpeech/preprocess.yaml \
             -m config/LJSpeech/model.yaml -t config/LJSpeech/train.yaml "
     fi
@@ -67,8 +67,7 @@ function generate_core {
             OOB_EXEC_HEADER+=" -C $(echo ${device_array[i]} |awk -F ';' '{print $1}') "
         elif [ "${device}" == "cuda" ];then
             OOB_EXEC_HEADER=" CUDA_VISIBLE_DEVICES=${device_array[i]} "
-            addtion_options+=" --nv_fuser "
-	    elif [ "${device}" == "xpu" ];then
+	      elif [ "${device}" == "xpu" ];then
             OOB_EXEC_HEADER=" ZE_AFFINITY_MASK=${i} "
         fi
         if [[ "${addtion_options}" =~ "--compile" ]];then
